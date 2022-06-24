@@ -38,14 +38,14 @@ class Baseline(BaseModel):
         logits = logits.permute(1, 0, 2).contiguous()  # [n, p, c]
         embed = embed_1
 
-        n, s, _, h, w = sils.size()
+        n, s, c, h, w = sils.size()
         retval = {
             'training_feat': {
                 'triplet': {'embeddings': embed_1, 'labels': labs},
                 'softmax': {'logits': logits, 'labels': labs}
             },
             'visual_summary': {
-                'image/sils': sils.view(n*s, 1, h, w)
+                'image/sils': sils.view(n*s, c, h, w)
             },
             'inference_feat': {
                 'embeddings': embed
