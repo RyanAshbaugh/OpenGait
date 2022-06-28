@@ -6,6 +6,14 @@ import torch.nn.functional as F
 from utils import get_msg_mgr, mkdir
 
 
+def remove_no_gallery(gallery):
+    return {k: v for k, v in gallery.items() if v}
+
+
+def remove_no_gallery_from_probe(gallery_subjects, probe):
+    return {k: v for k, v in probe.items() if k in gallery_subjects}
+
+
 def cuda_dist(x, y, metric='euc'):
     x = torch.from_numpy(x).cuda()
     y = torch.from_numpy(y).cuda()
@@ -144,7 +152,13 @@ def identification_briar(data, dataset, metric='euc'):
         else:
             to_save['probe'][l][f'{s}_{v}'] = f
 
-    '''
+    to_save['gallery'] = remove_no_gallery(to_save['gallery'])
+    to_save['probe'] = remove_no_gallery_from_probe(to_save['gallery'].keys(),
+                                                    to_save['probe'])
+
+    print('probe subjects: {}'.format(to_save['probe'].keys()))
+    print('gallery subjects: {}'.format(to_save['gallery'].keys()))
+
     gallery_collapsed = []
     label_collapsed = []
     for l, g in to_save['gallery'].items():
@@ -152,7 +166,9 @@ def identification_briar(data, dataset, metric='euc'):
         gallery_collapsed.append(np.stack(g).mean(0))
     label_collapsed = np.array(label_collapsed)
     gallery_collapsed = np.stack(gallery_collapsed)
-    '''
+
+    gallery_x = gallery_collapsed
+    gallery_y = label_collapsed
 
     probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
                       'OUMVLP': [['00']],
@@ -171,8 +187,10 @@ def identification_briar(data, dataset, metric='euc'):
             #     for (v2, gallery_view) in enumerate(view_list):
             gseq_mask = np.isin(seq_type, gallery_seq) # & np.isin(
             #     view, [gallery_view])
+            '''
             gallery_x = feature[gseq_mask, :]
             gallery_y = label[gseq_mask]
+            '''
 
             pseq_mask = np.isin(seq_type, probe_seq) # & np.isin(
             #     view, [probe_view])
