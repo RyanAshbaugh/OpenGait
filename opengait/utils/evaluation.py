@@ -156,9 +156,6 @@ def identification_briar(data, dataset, metric='euc'):
     to_save['probe'] = remove_no_gallery_from_probe(to_save['gallery'].keys(),
                                                     to_save['probe'])
 
-    print('probe subjects: {}'.format(to_save['probe'].keys()))
-    print('gallery subjects: {}'.format(to_save['gallery'].keys()))
-
     gallery_collapsed = []
     label_collapsed = []
     for l, g in to_save['gallery'].items():
@@ -181,6 +178,13 @@ def identification_briar(data, dataset, metric='euc'):
     num_rank = 10
     acc = np.zeros([len(probe_seq_dict[dataset]),
                     view_num, view_num, num_rank]) - 1.
+
+    probe_sequence_label_mask = np.zeros(len(seq_type), dtype=bool)
+    gallery_labels = to_save['gallery'].keys()
+    for probe_label in to_save['probe'].keys():
+        if probe_label in gallery_labels:
+            probe_sequence_label_mask[np.isin(label, probe_label)] = True
+
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
             # for (v1, probe_view) in enumerate(view_list):
@@ -192,7 +196,9 @@ def identification_briar(data, dataset, metric='euc'):
             gallery_y = label[gseq_mask]
             '''
 
-            pseq_mask = np.isin(seq_type, probe_seq) # & np.isin(
+            pseq_mask = np.isin(seq_type,
+                                probe_seq) & probe_sequence_label_mask
+            # & np.isin(
             #     view, [probe_view])
             probe_x = feature[pseq_mask, :]
             probe_y = label[pseq_mask]
