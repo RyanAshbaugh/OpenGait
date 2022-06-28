@@ -117,6 +117,84 @@ def identification(data, dataset, metric='euc'):
     return result_dict
 
 
+def identification_briar(data, dataset, metric='euc'):
+    msg_mgr = get_msg_mgr()
+    feature, label, seq_type, view = (data['embeddings'],
+                                      data['labels'],
+                                      data['types'],
+                                      data['views'])
+    label = np.array(label)
+
+    gallery_mask = np.array([True if 'controlled' in seq else False for seq in seq_type])
+    probe_mask = np.array([False if 'controlled' in seq else True for seq in seq_type])
+
+    view_list = list(set(view))
+    view_list.sort()
+    view_num = len(view_list)
+    # sample_num = len(feature)
+
+    to_save = {'gallery': {}, 'probe': {}}
+    # for subject in data['labels']:
+    for f, l, s, v in zip(list(feature), label, seq_type, view):
+        if l not in to_save['gallery'].keys():
+            to_save['gallery'][l] = []
+            to_save['probe'][l] = {}
+        if s.startswith('controlled'):
+            to_save['gallery'][l].append(f)
+        else:
+            to_save['probe'][l][f'{s}_{v}'] = f
+
+    '''
+    gallery_collapsed = []
+    label_collapsed = []
+    for l, g in to_save['gallery'].items():
+        label_collapsed.append(l)
+        gallery_collapsed.append(np.stack(g).mean(0))
+    label_collapsed = np.array(label_collapsed)
+    gallery_collapsed = np.stack(gallery_collapsed)
+    '''
+
+    probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
+                      'OUMVLP': [['00']],
+                      'BTS1': [[seq for seq in set(seq_type) if 'controlled' not in seq]]}
+
+    gallery_seq_dict = {'CASIA-B': [['nm-01', 'nm-02', 'nm-03', 'nm-04']],
+                        'OUMVLP': [['01']],
+                        'BTS1': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
+
+    num_rank = 10
+    acc = np.zeros([len(probe_seq_dict[dataset]),
+                    view_num, view_num, num_rank]) - 1.
+    for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
+        for gallery_seq in gallery_seq_dict[dataset]:
+            # for (v1, probe_view) in enumerate(view_list):
+            #     for (v2, gallery_view) in enumerate(view_list):
+            gseq_mask = np.isin(seq_type, gallery_seq) # & np.isin(
+            #     view, [gallery_view])
+            gallery_x = feature[gseq_mask, :]
+            gallery_y = label[gseq_mask]
+
+            pseq_mask = np.isin(seq_type, probe_seq) # & np.isin(
+            #     view, [probe_view])
+            probe_x = feature[pseq_mask, :]
+            probe_y = label[pseq_mask]
+
+            dist = cuda_dist(probe_x, gallery_x, metric)
+            idx = dist.sort(1)[1].cpu().numpy()
+            acc[p, :, :, :] = np.round(np.sum(np.cumsum(np.reshape(probe_y, [-1, 1]) ==
+                                                        gallery_y[idx[:, 0:num_rank]],
+                                                        1) > 0,
+                                              0) * 100 / dist.shape[0],
+                                       2)
+    result_dict = {}
+    np.set_printoptions(precision=3, suppress=True)
+    for ii in [0, 4, 9]:
+        msg_mgr.log_info(f'===Rank-{ii+1}===')
+        msg_mgr.log_info('%.3f ' % (np.mean(acc[0, :, :, ii])))
+    result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
+    return result_dict
+
+
 def identification_real_scene(data, dataset, metric='euc'):
     msg_mgr = get_msg_mgr()
     feature, label, seq_type = data['embeddings'], data['labels'], data['types']
