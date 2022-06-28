@@ -2,7 +2,7 @@ data_cfg:
   dataset_name: BTS1
   dataset_root: /research/iprobe-ashbau12/datasets/opengait-briar/BTS1
   dataset_partition: /research/iprobe-ashbau12/datasets/opengait-briar/BTS1/opengait-briar_partition.json
-  num_workers: 1
+  num_workers: 2
   remove_no_gallery: false # Remove probe if no gallery for it
   test_dataset_name: BTS1
 
