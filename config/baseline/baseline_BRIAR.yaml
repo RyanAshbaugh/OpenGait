@@ -1,7 +1,7 @@
 data_cfg:
   dataset_name: BRIAR-BRS1
-  dataset_root: /research/iprobe-ashbau12/datasets/opengait-briar
-  dataset_partition: /research/iprobe-ashbau12/datasets/opengait-briar/opengait-briar_partition.json
+  dataset_root: /research/iprobe-ashbau12/datasets/opengait-briar/BRS1
+  dataset_partition: /research/iprobe-ashbau12/datasets/opengait-briar/BRS1/opengait-briar_partition.json
   num_workers: 1
   remove_no_gallery: false # Remove probe if no gallery for it
   test_dataset_name: BRIAR-BRS1
@@ -19,7 +19,7 @@ evaluator_cfg:
     frames_all_limit: 720 # limit the number of sampled frames to prevent out of memory
   metric: euc # cos
   transform:
-    - type: BaseRgbMoveChannelsTransform
+    - type: BaseRgbTransform
       img_w: 64
 
 loss_cfg:
@@ -55,7 +55,7 @@ model_cfg:
     out_channels: 256
     parts_num: 31
   SeparateBNNecks:
-    class_num: 100
+    class_num: 158
     in_channels: 256
     parts_num: 31
   bin_num:
@@ -98,5 +98,5 @@ trainer_cfg:
     sample_type: fixed_unordered # fixed control input frames number, unordered for controlling order of input tensor; Other options: unfixed_ordered or all_ordered
     type: TripletSampler
   transform:
-    - type: BaseRgbMoveChannelsTransform
+    - type: BaseRgbTransform
       img_w: 64
