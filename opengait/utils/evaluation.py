@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from utils import get_msg_mgr, mkdir
+import pickle
 
 
 def remove_no_gallery(gallery):
@@ -185,6 +186,21 @@ def identification_briar(data, dataset, metric='euc'):
         if probe_label in gallery_labels:
             probe_sequence_label_mask[np.isin(label, probe_label)] = True
 
+    print("Number of gallery videos: {}".format(np.sum(gallery_mask)))
+    print("Number of probe videos:   {}".format(np.sum(probe_mask)))
+    print("Number of probe w/gallery videos: {}".format(np.sum(probe_sequence_label_mask)))
+
+    eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery.pkl"
+    with open(eval_metric_pickle_fname, "wb") as f:
+        pickle.dump(probe_seq_dict[dataset], f)
+        pickle.dump(gallery_seq_dict[dataset], f)
+        pickle.dump(seq_type, f)
+        pickle.dump(acc, f)
+        pickle.dump(gallery_y, f)
+        pickle.dump(label, f)
+        pickle.dump(probe_sequence_label_mask, f)
+        pickle.dump([jj for jj in gallery_labels], f)
+
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
             # for (v1, probe_view) in enumerate(view_list):
@@ -196,6 +212,7 @@ def identification_briar(data, dataset, metric='euc'):
             gallery_y = label[gseq_mask]
             '''
 
+            # pseq_mask = np.isin(seq_type, probe_seq)
             pseq_mask = np.isin(seq_type,
                                 probe_seq) & probe_sequence_label_mask
             # & np.isin(
@@ -210,6 +227,8 @@ def identification_briar(data, dataset, metric='euc'):
                                                         1) > 0,
                                               0) * 100 / dist.shape[0],
                                        2)
+
+
     result_dict = {}
     np.set_printoptions(precision=3, suppress=True)
     for ii in [0, 4, 9]:
