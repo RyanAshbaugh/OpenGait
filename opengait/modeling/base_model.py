@@ -399,6 +399,7 @@ class BaseModel(MetaModel, nn.Module):
             info_dict[k] = v
         return info_dict
 
+    '''
     @ staticmethod
     def run_train(model, loader):
         """Accept the instance object(model) here, and then run the train loop."""
@@ -462,3 +463,4 @@ class BaseModel(MetaModel, nn.Module):
             except:
                 dataset_name = model.cfgs['data_cfg']['dataset_name']
             return eval_func(info_dict, dataset_name, **valid_args)
+    '''
