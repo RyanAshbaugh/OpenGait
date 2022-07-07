@@ -42,10 +42,12 @@ class MetaModel(metaclass=ABCMeta):
 
     This class defines the necessary functions for the base model, in the base model, we have implemented them.
     """
+    '''
     @abstractmethod
     def get_loader(self, data_cfg):
         """Based on the given data_cfg, we get the data loader."""
         raise NotImplementedError
+    '''
 
     @abstractmethod
     def build_network(self, model_cfg):
@@ -92,6 +94,7 @@ class MetaModel(metaclass=ABCMeta):
         """Do inference (calculate features.)."""
         raise NotImplementedError
 
+    '''
     @abstractmethod
     def run_train(model):
         """Run a whole train schedule."""
@@ -101,6 +104,7 @@ class MetaModel(metaclass=ABCMeta):
     def run_test(model):
         """Run a whole test schedule."""
         raise NotImplementedError
+    '''
 
 
 class BaseModel(MetaModel, nn.Module):
