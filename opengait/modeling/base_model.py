@@ -201,6 +201,7 @@ class BaseModel(MetaModel, nn.Module):
                     nn.init.normal_(m.weight.data, 1.0, 0.02)
                     nn.init.constant_(m.bias.data, 0.0)
 
+    '''
     def get_loader(self, data_cfg, train=True):
         sampler_cfg = self.cfgs['trainer_cfg']['sampler'] if train else self.cfgs['evaluator_cfg']['sampler']
         dataset = DataSet(data_cfg, train)
@@ -216,6 +217,7 @@ class BaseModel(MetaModel, nn.Module):
             collate_fn=CollateFn(dataset.label_set, sampler_cfg),
             num_workers=data_cfg['num_workers'])
         return loader
+    '''
 
     def get_optimizer(self, optimizer_cfg):
         self.msg_mgr.log_info(optimizer_cfg)
