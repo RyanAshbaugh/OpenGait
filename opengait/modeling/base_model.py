@@ -146,12 +146,14 @@ class BaseModel(MetaModel, nn.Module):
         self.init_parameters()
 
         self.msg_mgr.log_info(cfgs['data_cfg'])
+        '''
         if training:
             self.train_loader = self.get_loader(
                 cfgs['data_cfg'], train=True)
         if not training or self.engine_cfg['with_test']:
             self.test_loader = self.get_loader(
                 cfgs['data_cfg'], train=False)
+        '''
 
         self.device = torch.distributed.get_rank()
         torch.cuda.set_device(self.device)
@@ -356,7 +358,7 @@ class BaseModel(MetaModel, nn.Module):
         self.scheduler.step()
         return True
 
-    def inference(self, rank):
+    def inference(self, rank, loader):
         """Inference all the test data.
 
         Args:
@@ -364,15 +366,15 @@ class BaseModel(MetaModel, nn.Module):
         Returns:
             Odict: contains the inference results.
         """
-        total_size = len(self.test_loader)
+        total_size = len(loader)
         if rank == 0:
             pbar = tqdm(total=total_size, desc='Transforming')
         else:
             pbar = NoOp()
-        batch_size = self.test_loader.batch_sampler.batch_size
+        batch_size = loader.batch_sampler.batch_size
         rest_size = total_size
         info_dict = Odict()
-        for inputs in self.test_loader:
+        for inputs in loader:
             ipts = self.inputs_pretreament(inputs)
             with autocast(enabled=self.engine_cfg['enable_float16']):
                 retval = self.forward(ipts)
@@ -396,9 +398,9 @@ class BaseModel(MetaModel, nn.Module):
         return info_dict
 
     @ staticmethod
-    def run_train(model):
+    def run_train(model, loader):
         """Accept the instance object(model) here, and then run the train loop."""
-        for inputs in model.train_loader:
+        for inputs in loader:
             ipts = model.inputs_pretreament(inputs)
             with autocast(enabled=model.engine_cfg['enable_float16']):
                 retval = model(ipts)
@@ -431,14 +433,14 @@ class BaseModel(MetaModel, nn.Module):
                 break
 
     @ staticmethod
-    def run_test(model):
+    def run_test(model, loader):
         """Accept the instance object(model) here, and then run the test loop."""
 
         rank = torch.distributed.get_rank()
         with torch.no_grad():
             info_dict = model.inference(rank)
         if rank == 0:
-            loader = model.test_loader
+            # loader = model.test_loader
             label_list = loader.dataset.label_list
             types_list = loader.dataset.types_list
             views_list = loader.dataset.views_list
