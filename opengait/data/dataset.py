@@ -7,12 +7,12 @@ from utils import get_msg_mgr
 
 
 class DataSet(tordata.Dataset):
-    def __init__(self, data_cfg, training):
+    def __init__(self, data_cfg, msg_mgr, training):
         """
-            seqs_info: the list with each element indicating 
+            seqs_info: the list with each element indicating
                             a certain gait sequence presented as [label, type, view, paths];
         """
-        self.__dataset_parser(data_cfg, training)
+        self.__dataset_parser(data_cfg, msg_mgr, training)
         self.cache = data_cfg['cache']
         self.label_list = [seq_info[0] for seq_info in self.seqs_info]
         self.types_list = [seq_info[1] for seq_info in self.seqs_info]
@@ -66,7 +66,7 @@ class DataSet(tordata.Dataset):
         for idx in range(len(self)):
             self.__getitem__(idx)
 
-    def __dataset_parser(self, data_config, training):
+    def __dataset_parser(self, data_config, msg_mgr, training):
         dataset_root = data_config['dataset_root']
         try:
             data_in_use = data_config['data_in_use']  # [n], true or false
@@ -80,9 +80,8 @@ class DataSet(tordata.Dataset):
         label_list = os.listdir(dataset_root)
         train_set = [label for label in train_set if label in label_list]
         test_set = [label for label in test_set if label in label_list]
-        miss_pids = [label for label in label_list if label not in (
-            train_set + test_set)]
-        msg_mgr = get_msg_mgr()
+        miss_pids = [label for label in label_list if label not in
+                     (train_set + test_set)]
 
         def log_pid_list(pid_list):
             if len(pid_list) >= 3:
