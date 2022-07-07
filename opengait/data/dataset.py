@@ -3,14 +3,13 @@ import pickle
 import os.path as osp
 import torch.utils.data as tordata
 import json
-from utils import get_msg_mgr
 
 
 class DataSet(tordata.Dataset):
     def __init__(self, data_cfg, msg_mgr, training):
         """
-            seqs_info: the list with each element indicating
-                            a certain gait sequence presented as [label, type, view, paths];
+        seqs_info: the list with each element indicating
+        a certain gait sequence presented as [label, type, view, paths];
         """
         self.__dataset_parser(data_cfg, msg_mgr, training)
         self.cache = data_cfg['cache']
@@ -44,11 +43,11 @@ class DataSet(tordata.Dataset):
             data_list.append(_)
         for idx, data in enumerate(data_list):
             if len(data) != len(data_list[0]):
-                raise ValueError(
-                    'Each input data({}) should have the same length.'.format(paths[idx]))
+                raise ValueError('Each input data({}) should have the same '
+                                 'length.'.format(paths[idx]))
             if len(data) == 0:
-                raise ValueError(
-                    'Each input data({}) should have at least one element.'.format(paths[idx]))
+                raise ValueError('Each input data({}) should have at least '
+                                 'one element.'.format(paths[idx]))
         return data_list
 
     def __getitem__(self, idx):
