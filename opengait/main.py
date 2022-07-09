@@ -173,5 +173,5 @@ if __name__ == '__main__':
     training = (opt.phase == 'train')
     msg_mgr = initialization(cfgs, training)
 
-    loader = setup_loader(cfgs, msg_mgr)
+    loader = setup_loader(cfgs, msg_mgr, training)
     run_model(cfgs, loader, msg_mgr, training)
