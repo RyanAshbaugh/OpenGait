@@ -68,9 +68,9 @@ def run_model(cfgs, loader, msg_mgr, training):
     msg_mgr.log_info("Model Initialization Finished!")
 
     if training:
-        run_train(model, loader)
+        run_train(model, msg_mgr, loader)
     else:
-        run_test(model, loader)
+        run_test(model, msg_mgr, loader)
 
 
 def setup_loader(cfgs, msg_mgr, train=True):
@@ -93,7 +93,7 @@ def setup_loader(cfgs, msg_mgr, train=True):
     return loader
 
 
-def run_train(model, loader):
+def run_train(model, msg_mgr, loader):
     """Accept the instance object(model) here, and then run the train loop."""
     for inputs in loader:
         ipts = model.inputs_pretreament(inputs)
@@ -111,26 +111,26 @@ def run_train(model, loader):
         visual_summary['scalar/learning_rate'] = \
             model.optimizer.param_groups[0]['lr']
 
-        model.msg_mgr.train_step(loss_info, visual_summary)
+        msg_mgr.train_step(loss_info, visual_summary)
         if model.iteration % model.engine_cfg['save_iter'] == 0:
             # save the checkpoint
             model.save_ckpt(model.iteration)
 
             # run test if with_test = true
             if model.engine_cfg['with_test']:
-                model.msg_mgr.log_info("Running test...")
+                msg_mgr.log_info("Running test...")
                 model.eval()
                 result_dict = BaseModel.run_test(model)
                 model.train()
                 if model.cfgs['trainer_cfg']['fix_BN']:
                     model.fix_BN()
-                model.msg_mgr.write_to_tensorboard(result_dict)
-                model.msg_mgr.reset_time()
+                msg_mgr.write_to_tensorboard(result_dict)
+                msg_mgr.reset_time()
         if model.iteration >= model.engine_cfg['total_iter']:
             break
 
 
-def run_test(model, loader):
+def run_test(model, msg_mgr, loader):
     """Accept the instance object(model) here, and then run the test loop."""
 
     rank = torch.distributed.get_rank()
