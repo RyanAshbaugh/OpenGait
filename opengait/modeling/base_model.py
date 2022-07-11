@@ -325,7 +325,6 @@ class BaseModel(MetaModel, nn.Module):
         for inputs in loader:
             ipts = self.inputs_pretreament(inputs)
             with autocast(enabled=self.engine_cfg['enable_float16']):
-                print(ipts)
                 retval = self.forward(ipts)
                 inference_feat = retval['inference_feat']
                 for k, v in inference_feat.items():
