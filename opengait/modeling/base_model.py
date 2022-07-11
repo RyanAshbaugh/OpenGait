@@ -32,7 +32,6 @@ from utils import Odict, mkdir, ddp_all_gather
 from utils import get_valid_args, is_list, is_dict, np2var, ts2np, list2var, get_attr_from
 from utils import evaluation as eval_functions
 from utils import NoOp
-from utils import get_msg_mgr
 
 __all__ = ['BaseModel']
 
@@ -94,18 +93,6 @@ class MetaModel(metaclass=ABCMeta):
         """Do inference (calculate features.)."""
         raise NotImplementedError
 
-    '''
-    @abstractmethod
-    def run_train(model):
-        """Run a whole train schedule."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def run_test(model):
-        """Run a whole test schedule."""
-        raise NotImplementedError
-    '''
-
 
 class BaseModel(MetaModel, nn.Module):
     """Base model.
@@ -113,7 +100,6 @@ class BaseModel(MetaModel, nn.Module):
     This class inherites the MetaModel class, and implements the basic model functions, like get_loader, build_network, etc.
 
     Attributes:
-        msg_mgr: the massage manager.
         cfgs: the configs.
         iteration: the current iteration of the model.
         engine_cfg: the configs of the engine(train or test).
@@ -134,7 +120,6 @@ class BaseModel(MetaModel, nn.Module):
         """
 
         super(BaseModel, self).__init__()
-        self.msg_mgr = get_msg_mgr()
         self.cfgs = cfgs
         self.iteration = 0
         self.engine_cfg = cfgs['trainer_cfg'] if training else cfgs['evaluator_cfg']
@@ -149,20 +134,14 @@ class BaseModel(MetaModel, nn.Module):
         self.build_network(cfgs['model_cfg'])
         self.init_parameters()
 
-        self.msg_mgr.log_info(cfgs['data_cfg'])
-        '''
-        if training:
-            self.train_loader = self.get_loader(
-                cfgs['data_cfg'], train=True)
-        if not training or self.engine_cfg['with_test']:
-            self.test_loader = self.get_loader(
-                cfgs['data_cfg'], train=False)
-        '''
 
-        self.device = torch.distributed.get_rank()
-        torch.cuda.set_device(self.device)
-        self.to(device=torch.device(
-            "cuda", self.device))
+        try:
+            self.device = torch.distributed.get_rank()
+            torch.cuda.set_device(self.device)
+            self.to(device=torch.device(
+                "cuda", self.device))
+        except Exception as e:
+            pass
 
         if training:
             self.loss_aggregator = LossAggregator(cfgs['loss_cfg'])
@@ -205,26 +184,7 @@ class BaseModel(MetaModel, nn.Module):
                     nn.init.normal_(m.weight.data, 1.0, 0.02)
                     nn.init.constant_(m.bias.data, 0.0)
 
-    '''
-    def get_loader(self, data_cfg, train=True):
-        sampler_cfg = self.cfgs['trainer_cfg']['sampler'] if train else self.cfgs['evaluator_cfg']['sampler']
-        dataset = DataSet(data_cfg, train)
-
-        Sampler = get_attr_from([Samplers], sampler_cfg['type'])
-        vaild_args = get_valid_args(Sampler, sampler_cfg, free_keys=[
-            'sample_type', 'type'])
-        sampler = Sampler(dataset, **vaild_args)
-
-        loader = tordata.DataLoader(
-            dataset=dataset,
-            batch_sampler=sampler,
-            collate_fn=CollateFn(dataset.label_set, sampler_cfg),
-            num_workers=data_cfg['num_workers'])
-        return loader
-    '''
-
     def get_optimizer(self, optimizer_cfg):
-        self.msg_mgr.log_info(optimizer_cfg)
         optimizer = get_attr_from([optim], optimizer_cfg['solver'])
         valid_arg = get_valid_args(optimizer, optimizer_cfg, ['solver'])
         optimizer = optimizer(
@@ -232,7 +192,6 @@ class BaseModel(MetaModel, nn.Module):
         return optimizer
 
     def get_scheduler(self, scheduler_cfg):
-        self.msg_mgr.log_info(scheduler_cfg)
         Scheduler = get_attr_from(
             [optim.lr_scheduler], scheduler_cfg['scheduler'])
         valid_arg = get_valid_args(Scheduler, scheduler_cfg, ['scheduler'])
@@ -258,25 +217,13 @@ class BaseModel(MetaModel, nn.Module):
             "cuda", self.device))
         model_state_dict = checkpoint['model']
 
-        if not load_ckpt_strict:
-            self.msg_mgr.log_info("-------- Restored Params List --------")
-            self.msg_mgr.log_info(sorted(set(model_state_dict.keys()).intersection(
-                set(self.state_dict().keys()))))
-
         self.load_state_dict(model_state_dict, strict=load_ckpt_strict)
         if self.training:
             if not self.engine_cfg["optimizer_reset"] and 'optimizer' in checkpoint:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
-            else:
-                self.msg_mgr.log_warning(
-                    "Restore NO Optimizer from %s !!!" % save_name)
             if not self.engine_cfg["scheduler_reset"] and 'scheduler' in checkpoint:
                 self.scheduler.load_state_dict(
                     checkpoint['scheduler'])
-            else:
-                self.msg_mgr.log_warning(
-                    "Restore NO Scheduler from %s !!!" % save_name)
-        self.msg_mgr.log_info("Restore Parameters from %s !!!" % save_name)
 
     def resume_ckpt(self, restore_hint):
         if isinstance(restore_hint, int):
@@ -341,9 +288,6 @@ class BaseModel(MetaModel, nn.Module):
         """
 
         self.optimizer.zero_grad()
-        if loss_sum <= 1e-9:
-            self.msg_mgr.log_warning(
-                "Find the loss sum less than 1e-9 but the training process will continue!")
 
         if self.engine_cfg['enable_float16']:
             self.Scaler.scale(loss_sum).backward()
@@ -353,8 +297,6 @@ class BaseModel(MetaModel, nn.Module):
             # Warning caused by optimizer skip when NaN
             # https://discuss.pytorch.org/t/optimizer-step-before-lr-scheduler-step-error-using-gradscaler/92930/5
             if scale != self.Scaler.get_scale():
-                self.msg_mgr.log_debug("Training step skip. Expected the former scale equals to the present, got {} and {}".format(
-                    scale, self.Scaler.get_scale()))
                 return False
         else:
             loss_sum.backward()
@@ -383,6 +325,7 @@ class BaseModel(MetaModel, nn.Module):
         for inputs in loader:
             ipts = self.inputs_pretreament(inputs)
             with autocast(enabled=self.engine_cfg['enable_float16']):
+                print(ipts)
                 retval = self.forward(ipts)
                 inference_feat = retval['inference_feat']
                 for k, v in inference_feat.items():
@@ -402,69 +345,3 @@ class BaseModel(MetaModel, nn.Module):
             v = np.concatenate(v)[:total_size]
             info_dict[k] = v
         return info_dict
-
-    '''
-    @ staticmethod
-    def run_train(model, loader):
-        """Accept the instance object(model) here, and then run the train loop."""
-        for inputs in loader:
-            ipts = model.inputs_pretreament(inputs)
-            with autocast(enabled=model.engine_cfg['enable_float16']):
-                retval = model(ipts)
-                training_feat, visual_summary = retval['training_feat'], retval['visual_summary']
-                del retval
-            loss_sum, loss_info = model.loss_aggregator(training_feat)
-            ok = model.train_step(loss_sum)
-            if not ok:
-                continue
-
-            visual_summary.update(loss_info)
-            visual_summary['scalar/learning_rate'] = model.optimizer.param_groups[0]['lr']
-
-            model.msg_mgr.train_step(loss_info, visual_summary)
-            if model.iteration % model.engine_cfg['save_iter'] == 0:
-                # save the checkpoint
-                model.save_ckpt(model.iteration)
-
-                # run test if with_test = true
-                if model.engine_cfg['with_test']:
-                    model.msg_mgr.log_info("Running test...")
-                    model.eval()
-                    result_dict = BaseModel.run_test(model)
-                    model.train()
-                    if model.cfgs['trainer_cfg']['fix_BN']:
-                        model.fix_BN()
-                    model.msg_mgr.write_to_tensorboard(result_dict)
-                    model.msg_mgr.reset_time()
-            if model.iteration >= model.engine_cfg['total_iter']:
-                break
-
-    @ staticmethod
-    def run_test(model, loader):
-        """Accept the instance object(model) here, and then run the test loop."""
-
-        rank = torch.distributed.get_rank()
-        with torch.no_grad():
-            info_dict = model.inference(rank)
-        if rank == 0:
-            # loader = model.test_loader
-            label_list = loader.dataset.label_list
-            types_list = loader.dataset.types_list
-            views_list = loader.dataset.views_list
-
-            info_dict.update({
-                'labels': label_list, 'types': types_list, 'views': views_list})
-
-            if 'eval_func' in model.cfgs["evaluator_cfg"].keys():
-                eval_func = model.cfgs['evaluator_cfg']["eval_func"]
-            else:
-                eval_func = 'identification'
-            eval_func = getattr(eval_functions, eval_func)
-            valid_args = get_valid_args(
-                eval_func, model.cfgs["evaluator_cfg"], ['metric'])
-            try:
-                dataset_name = model.cfgs['data_cfg']['test_dataset_name']
-            except:
-                dataset_name = model.cfgs['data_cfg']['dataset_name']
-            return eval_func(info_dict, dataset_name, **valid_args)
-    '''
