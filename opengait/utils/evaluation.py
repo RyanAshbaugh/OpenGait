@@ -132,6 +132,7 @@ def identification_briar(data, dataset, metric='euc'):
                                       data['labels'],
                                       data['types'],
                                       data['views'])
+    print('feature.shape: ', feature.shape)
     label = np.array(label)
 
     gallery_mask = np.array([True if 'controlled' in seq else False for seq in seq_type])
@@ -190,7 +191,7 @@ def identification_briar(data, dataset, metric='euc'):
     print("Number of probe videos:   {}".format(np.sum(probe_mask)))
     print("Number of probe w/gallery videos: {}".format(np.sum(probe_sequence_label_mask)))
 
-    eval_metric_pickle_fname = "./all_probe_test_metrics.pkl"
+    eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
     with open(eval_metric_pickle_fname, "wb") as f:
         pickle.dump(probe_seq_dict[dataset], f)
         pickle.dump(gallery_seq_dict[dataset], f)
@@ -214,11 +215,13 @@ def identification_briar(data, dataset, metric='euc'):
             gallery_y = label[gseq_mask]
             '''
 
-            pseq_mask = np.isin(seq_type, probe_seq)
-            # pseq_mask = np.isin(seq_type,
-            #                     probe_seq) & probe_sequence_label_mask
-            # & np.isin(
-            #     view, [probe_view])
+            # open set
+            # pseq_mask = np.isin(seq_type, probe_seq)
+
+            # closed set
+            pseq_mask = np.isin(seq_type,
+                                probe_seq) & probe_sequence_label_mask
+
             probe_x = feature[pseq_mask, :]
             probe_y = label[pseq_mask]
 
