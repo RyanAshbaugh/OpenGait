@@ -11,6 +11,8 @@ class CollateFn(object):
         sample_type = sample_type.split('_')
         self.sampler = sample_type[0]
         self.ordered = sample_type[1]
+        self.use_full_video = sample_config['use_full_video']
+        self.random_sample_full_video = sample_config['random_sample_full_video']
         if self.sampler not in ['fixed', 'unfixed', 'all']:
             raise ValueError
         if self.ordered not in ['ordered', 'unordered']:
@@ -32,6 +34,8 @@ class CollateFn(object):
         self.frames_all_limit = -1
         if self.sampler == 'all' and 'frames_all_limit' in sample_config:
             self.frames_all_limit = sample_config['frames_all_limit']
+
+        self.frames_num_fixed = sample_config['frames_num_fixed']
 
     def __call__(self, batch):
         batch_size = len(batch)
@@ -89,6 +93,22 @@ class CollateFn(object):
             for i in range(feature_num):
                 for j in indices[:self.frames_all_limit] if self.frames_all_limit > -1 and len(indices) > self.frames_all_limit else indices:
                     sampled_fras[i].append(seqs[i][j])
+
+            temp_sampled_frames = []
+            if self.use_full_video:
+                for sampled_sequence in sampled_fras:
+                    num_seqs_from_video = int(len(sampled_sequence) / \
+                        self.frames_num_fixed)
+
+                    if self.random_sample_full_video:
+                        random.shuffle(sampled_sequence)
+
+                    for jj in range(num_seqs_from_video):
+                        start = jj * self.frames_num_fixed
+                        end = (jj+1) * self.frames_num_fixed
+                        temp_sampled_frames.append(sampled_sequence[start:end])
+
+            sampled_fras = temp_sampled_frames
             return sampled_fras
 
         # f: feature_num
@@ -96,8 +116,27 @@ class CollateFn(object):
         # p: batch_size_per_gpu
         # g: gpus_num
         fras_batch = [sample_frames(seqs) for seqs in seqs_batch]  # [b, f]
-        batch = [fras_batch, labs_batch, typs_batch, vies_batch, None]
 
+        new_fras_batch = []
+        new_labs_batch = []
+        new_typs_batch = []
+        new_vies_batch = []
+        for ii in range(len(fras_batch)):
+            for jj in range(len(fras_batch[ii])):
+                new_fras_batch.append(fras_batch[ii][jj])
+                new_labs_batch.append(labs_batch[ii])
+                new_typs_batch.append(typs_batch[ii])
+                new_vies_batch.append(vies_batch[ii])
+
+        # batch = [fras_batch, labs_batch, typs_batch, vies_batch, None]
+        batch = [new_fras_batch,
+                 new_labs_batch,
+                 new_typs_batch,
+                 new_vies_batch,
+                 None]
+
+        print('len(fras_batch): ', len(fras_batch[0]))
+        print('len(new_fras_batch): ', len(new_fras_batch[0]))
         if self.sampler == "fixed":
             fras_batch = [[np.asarray(fras_batch[i][j]) for i in range(batch_size)]
                           for j in range(feature_num)]  # [f, b]
