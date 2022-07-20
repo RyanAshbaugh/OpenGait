@@ -94,9 +94,9 @@ class CollateFn(object):
                 for j in indices[:self.frames_all_limit] if self.frames_all_limit > -1 and len(indices) > self.frames_all_limit else indices:
                     sampled_fras[i].append(seqs[i][j])
 
-            temp_sampled_frames = []
+            temp_sampled_frames = [[] for i in range(feature_num)]
             if self.use_full_video:
-                for sampled_sequence in sampled_fras:
+                for ii, sampled_sequence in enumerate(sampled_fras):
                     num_seqs_from_video = int(len(sampled_sequence) / \
                         self.frames_num_fixed)
 
@@ -106,8 +106,12 @@ class CollateFn(object):
                     for jj in range(num_seqs_from_video):
                         start = jj * self.frames_num_fixed
                         end = (jj+1) * self.frames_num_fixed
-                        temp_sampled_frames.append(sampled_sequence[start:end])
+                        temp_sampled_frames[0].append(sampled_sequence[start:end])
 
+            if len(temp_sampled_frames[0]) == 0:
+                print('\ntemp: ', temp_sampled_frames)
+                print('num_seqs_from_video: ', num_seqs_from_video)
+                print('sampled: ', sampled_fras)
             sampled_fras = temp_sampled_frames
             return sampled_fras
 
@@ -117,16 +121,26 @@ class CollateFn(object):
         # g: gpus_num
         fras_batch = [sample_frames(seqs) for seqs in seqs_batch]  # [b, f]
 
-        new_fras_batch = []
+        new_fras_batch = [[]]
         new_labs_batch = []
         new_typs_batch = []
         new_vies_batch = []
-        for ii in range(len(fras_batch)):
-            for jj in range(len(fras_batch[ii])):
-                new_fras_batch.append(fras_batch[ii][jj])
+
+        for ii in range(len(fras_batch[0])):
+            for jj in range(len(fras_batch[0][ii])):
+                new_fras_batch[0].append(fras_batch[0][ii][jj])
                 new_labs_batch.append(labs_batch[ii])
                 new_typs_batch.append(typs_batch[ii])
                 new_vies_batch.append(vies_batch[ii])
+
+        if len(new_fras_batch[0]) == 0:
+            print(10*'\n')
+            print('fras_batch: ', fras_batch)
+            print('batch_size: ', batch_size)
+            print('len(fras_batch): ', len(fras_batch))
+            print(10*'\n')
+
+        fras_batch = new_fras_batch
 
         # batch = [fras_batch, labs_batch, typs_batch, vies_batch, None]
         batch = [new_fras_batch,
@@ -135,12 +149,18 @@ class CollateFn(object):
                  new_vies_batch,
                  None]
 
-        print('len(fras_batch): ', len(fras_batch[0]))
-        print('len(new_fras_batch): ', len(new_fras_batch[0]))
+        #print('len(new_fras_batch): ', len(new_fras_batch[0]))
         if self.sampler == "fixed":
             fras_batch = [[np.asarray(fras_batch[i][j]) for i in range(batch_size)]
                           for j in range(feature_num)]  # [f, b]
         else:
+            if len(fras_batch[0]) == 0:
+                print(10*'\n')
+                print('len(seqs_batch): ', len(seqs_batch))
+                print('fras_batch: ', fras_batch)
+                print('batch_size: ', batch_size)
+                print('len(fras_batch): ', len(fras_batch))
+                print(10*'\n')
             seqL_batch = [[len(fras_batch[i][0])
                            for i in range(batch_size)]]  # [1, p]
 
