@@ -11,9 +11,11 @@ class DataSetBRIAR(tordata.Dataset):
         seqs_info: the list with each element indicating
         a certain gait sequence presented as [label, type, view, paths];
         """
-        self.__dataset_parser(data_cfg)
         self.training = training
+        self.__dataset_parser(data_cfg)
+        self.__assemble_sequence_data_and_info()
         self.cache = data_cfg['cache']
+
         self.label_list = [seq_info[0] for seq_info in self.seqs_info]
         self.types_list = [seq_info[1] for seq_info in self.seqs_info]
         self.views_list = [seq_info[2] for seq_info in self.seqs_info]
@@ -23,6 +25,8 @@ class DataSetBRIAR(tordata.Dataset):
         self.views_set = sorted(list(set(self.views_list)))
         self.seqs_data = [None] * len(self)
         self.indices_dict = {label: [] for label in self.label_set}
+
+
         for i, seq_info in enumerate(self.seqs_info):
             self.indices_dict[seq_info[0]].append(i)
         if self.cache:
