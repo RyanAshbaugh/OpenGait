@@ -1,17 +1,26 @@
 import os
 import pickle
+import random
 import os.path as osp
 import torch.utils.data as tordata
 import json
 
 
+def getSamplerConfig(cfgs, training):
+    sampler_cfg = cfgs['trainer_cfg']['sampler'] if training else \
+        cfgs['evaluator_cfg']['sampler']
+    return sampler_cfg
+
+
 class DataSetBRIAR(tordata.Dataset):
-    def __init__(self, data_cfg, training):
+    def __init__(self, cfgs, training):
         """
         seqs_info: the list with each element indicating
         a certain gait sequence presented as [label, type, view, paths];
         """
         self.training = training
+        data_cfg = cfgs['data_cfg']
+        self.sampler_cfg = getSamplerConfig(cfgs, self.training)
         self.__dataset_parser(data_cfg)
         self.__assemble_sequence_data_and_info()
         self.cache = data_cfg['cache']
@@ -25,7 +34,6 @@ class DataSetBRIAR(tordata.Dataset):
         self.views_set = sorted(list(set(self.views_list)))
         self.seqs_data = [None] * len(self)
         self.indices_dict = {label: [] for label in self.label_set}
-
 
         for i, seq_info in enumerate(self.seqs_info):
             self.indices_dict[seq_info[0]].append(i)
@@ -63,6 +71,9 @@ class DataSetBRIAR(tordata.Dataset):
             self.seqs_data[idx] = data_list
         else:
             data_list = self.seqs_data[idx]
+
+        data_list[0] = data_list[0][self.sequence_indices[idx]]
+
         seq_info = self.seqs_info[idx]
         return data_list, seq_info
 
@@ -111,6 +122,27 @@ class DataSetBRIAR(tordata.Dataset):
             if self.training else self.get_seqs_info_list(self.test_set)
 
         # loop over data files to begin breaking into smaller sequences
+        new_seqs_info = []
+        sequence_indices = []
         full_sequence_files = [seq_info[-1][0] for seq_info in self.seqs_info]
-        for full_sequence_file in full_sequence_files:
-            print(full_sequence_file)
+        for ii, full_sequence_file in enumerate(full_sequence_files):
+            with open(full_sequence_file, 'rb') as f:
+                silh_sequence = pickle.load(f)
+            num_sequence_frames = silh_sequence.shape[0]
+            num_seqs_from_video = int(num_sequence_frames /
+                                      self.sampler_cfg['frames_num_fixed'])
+
+            frame_indices = [kk for kk in range(num_sequence_frames)]
+            if self.sampler_cfg['random_sample_full_video']:
+                frame_indices = random.sample(frame_indices,
+                                              num_sequence_frames)
+
+            for jj in range(num_seqs_from_video):
+                start_index = jj * self.sampler_cfg['frames_num_fixed']
+                end_index = (jj+1) * self.sampler_cfg['frames_num_fixed']
+
+                new_seqs_info.append(self.seqs_info[ii])
+                sequence_indices.append(frame_indices[start_index:end_index])
+
+        self.seqs_info = new_seqs_info
+        self.sequence_indices = sequence_indices
