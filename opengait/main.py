@@ -77,7 +77,7 @@ def setup_loader(cfgs, msg_mgr, train=True):
 
     sampler_cfg = (cfgs['trainer_cfg']['sampler'] if
                    train else cfgs['evaluator_cfg']['sampler'])
-    dataset = DataSetBRIAR(cfgs['data_cfg'], train)
+    dataset = DataSetBRIAR(cfgs, train)
 
     Sampler = get_attr_from([Samplers], sampler_cfg['type'])
     vaild_args = get_valid_args(Sampler,
@@ -174,6 +174,4 @@ if __name__ == '__main__':
     msg_mgr = initialization(cfgs, training)
 
     loader = setup_loader(cfgs, msg_mgr, training)
-    import sys
-    sys.exit()
     run_model(cfgs, loader, msg_mgr, training)
