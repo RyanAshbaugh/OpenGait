@@ -87,7 +87,7 @@ trainer_cfg:
   save_iter: 1000
   save_name: Baseline
   sync_BN: true
-  total_iter: 10000
+  total_iter: 60000
   sampler:
     batch_shuffle: true
     batch_size:
