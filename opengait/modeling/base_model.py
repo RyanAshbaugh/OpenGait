@@ -324,20 +324,21 @@ class BaseModel(MetaModel, nn.Module):
         info_dict = Odict()
         for inputs in loader:
             ipts = self.inputs_pretreament(inputs)
-            with autocast(enabled=self.engine_cfg['enable_float16']):
-                retval = self.forward(ipts)
-                inference_feat = retval['inference_feat']
+            if len(ipts[0][0]) > 0:
+                with autocast(enabled=self.engine_cfg['enable_float16']):
+                    retval = self.forward(ipts)
+                    inference_feat = retval['inference_feat']
+                    for k, v in inference_feat.items():
+                        inference_feat[k] = ddp_all_gather(v, requires_grad=False)
+                    del retval
                 for k, v in inference_feat.items():
-                    inference_feat[k] = ddp_all_gather(v, requires_grad=False)
-                del retval
-            for k, v in inference_feat.items():
-                inference_feat[k] = ts2np(v)
-            info_dict.append(inference_feat)
-            rest_size -= batch_size
-            if rest_size >= 0:
-                update_size = batch_size
-            else:
-                update_size = total_size % batch_size
+                    inference_feat[k] = ts2np(v)
+                info_dict.append(inference_feat)
+                rest_size -= batch_size
+                if rest_size >= 0:
+                    update_size = batch_size
+                else:
+                    update_size = total_size % batch_size
             pbar.update(update_size)
         pbar.close()
         for k, v in info_dict.items():
