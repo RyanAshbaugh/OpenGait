@@ -192,6 +192,8 @@ def identification_briar(data, dataset, metric='euc'):
     print("Number of probe w/gallery videos: {}".format(np.sum(probe_sequence_label_mask)))
 
     eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
+
+    '''
     with open(eval_metric_pickle_fname, "wb") as f:
         pickle.dump(probe_seq_dict[dataset], f)
         pickle.dump(gallery_seq_dict[dataset], f)
@@ -203,6 +205,7 @@ def identification_briar(data, dataset, metric='euc'):
         pickle.dump([jj for jj in gallery_labels], f)
         pickle.dump(feature, f)
         pickle.dump(to_save, f)
+    '''
 
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
