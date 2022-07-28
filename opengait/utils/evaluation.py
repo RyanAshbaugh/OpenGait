@@ -62,20 +62,10 @@ def get_failure_rank_indices(false_in_rows_until_correct_match, failure_ranks):
                                                         ii - 1)
         upper_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
                                                         ii)
-        failure_sequence_indices = set(np.where((lower_rank_sequencs == False) &
-                                                (upper_rank_sequencs == True))[0])
+        failure_sequence_indices = list(set(np.where((lower_rank_sequencs == False) &
+                                                     (upper_rank_sequencs == True))[0]))
         probe_x_failure_rank_indices[ii] = np.asarray(failure_sequence_indices)
     return probe_x_failure_rank_indices
-
-
-'''
-def get_failure_rank_sequencs(probe_x_failure_rank_indices, probe_x):
-    probe_x_failure_rank_sequences = {}
-    for rank, probe_x_fail_indices in probe_x_failure_rank_indices.items():
-        probe_x_failure_rank_sequences[rank] = []
-        for index in probe_x_fail_indices:
-            probe_x_failure_rank_sequences[rank].append(probe_x[index, :)
-'''
 
 
 def cuda_dist(x, y, metric='euc'):
@@ -322,6 +312,7 @@ def identification_briar(data, dataset, metric='euc'):
 
             acc[p, :, :, :] = rank_percentages
 
+    '''
     with open(acc_pickle_fname, "wb") as f:
         pickle.dump(false_in_rows_until_correct_match, f)
         pickle.dump(acc, f)
@@ -334,6 +325,7 @@ def identification_briar(data, dataset, metric='euc'):
         pickle.dump([jj for jj in gallery_labels], f)
         pickle.dump(to_save, f)
         pickle.dump(fnames, f)
+    '''
 
     result_dict = {}
     np.set_printoptions(precision=3, suppress=True)
