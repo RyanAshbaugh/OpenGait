@@ -15,6 +15,69 @@ def remove_no_gallery_from_probe(gallery_subjects, probe):
     return {k: v for k, v in probe.items() if k in gallery_subjects}
 
 
+def isProbeInTopN(probe_y, gallery_y, sorted_indices, rank):
+    '''
+    columns are N ranks
+    rows are probes
+    '''
+    probe_in_top_N = np.cumsum(np.reshape(probe_y, [-1, 1]) == \
+                               gallery_y[sorted_indices[:, 0:rank]], 1) > 0
+    return probe_in_top_N
+
+
+def findCorrectMatches(probe_in_top_N):
+    correct_matches = probe_in_top_N.cumsum(axis=1) == 1
+    return correct_matches
+
+
+def isCorrectMatchWithinRankN(correct_matches, rank):
+    # be sure to pass only mated probes, since if a row that is all false will
+    # have argmax return 0
+    probe_match_within_rank_N = correct_matches.argmax(axis=1) < rank
+    return probe_match_within_rank_N
+
+
+def doesCorrectMatchScorePassThreshold(correct_match_scores, threshold):
+    score_pass_threshold = correct_match_scores < threshold
+    return score_pass_threshold
+
+
+def sortDistances(dist, num_rank):
+    ranked_distances = dist.sort(1)[0][:, 0:num_rank]
+    return ranked_distances
+
+
+def findProbesWithAFalsePositive(ranked_distances, rank, threshold):
+    # only pass in non-mated probes
+    false_positives = (ranked_distances[:, :rank].cpu().numpy() < \
+                       threshold).cumsum(axis=1).cumsum(axis=1) == 1
+    return false_positives
+
+
+def get_failure_rank_indices(false_in_rows_until_correct_match, failure_ranks):
+    probe_x_failure_rank_indices = {}
+    correct_matches = findCorrectMatches(false_in_rows_until_correct_match)
+    for ii in failure_ranks:
+        lower_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
+                                                        ii - 1)
+        upper_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
+                                                        ii)
+        failure_sequence_indices = set(np.where((lower_rank_sequencs == False) &
+                                                (upper_rank_sequencs == True))[0])
+        probe_x_failure_rank_indices[ii] = np.asarray(failure_sequence_indices)
+    return probe_x_failure_rank_indices
+
+
+'''
+def get_failure_rank_sequencs(probe_x_failure_rank_indices, probe_x):
+    probe_x_failure_rank_sequences = {}
+    for rank, probe_x_fail_indices in probe_x_failure_rank_indices.items():
+        probe_x_failure_rank_sequences[rank] = []
+        for index in probe_x_fail_indices:
+            probe_x_failure_rank_sequences[rank].append(probe_x[index, :)
+'''
+
+
 def cuda_dist(x, y, metric='euc'):
     x = torch.from_numpy(x).cuda()
     y = torch.from_numpy(y).cuda()
@@ -128,24 +191,27 @@ def identification(data, dataset, metric='euc'):
 
 def identification_briar(data, dataset, metric='euc'):
     msg_mgr = get_msg_mgr()
-    feature, label, seq_type, view = (data['embeddings'],
-                                      data['labels'],
-                                      data['types'],
-                                      data['views'])
-    print('feature.shape: ', feature.shape)
+    feature, label, seq_type, fnames = (data['embeddings'],
+                                        data['labels'],
+                                        data['types'],
+                                        data['views'])
+
+    ranks = [0, 2, 4, 9, 14]
+    failure_ranks = [1, 5, 10]
+    num_rank = int(np.max(np.array(ranks)) + 1)
     label = np.array(label)
 
     gallery_mask = np.array([True if 'controlled' in seq else False for seq in seq_type])
     probe_mask = np.array([False if 'controlled' in seq else True for seq in seq_type])
 
-    view_list = list(set(view))
-    view_list.sort()
-    view_num = len(view_list)
+    fnames_list = list(set(fnames))
+    fnames_list.sort()
+    fnames_num = len(fnames_list)
     # sample_num = len(feature)
 
     to_save = {'gallery': {}, 'probe': {}}
     # for subject in data['labels']:
-    for f, l, s, v in zip(list(feature), label, seq_type, view):
+    for f, l, s, v in zip(list(feature), label, seq_type, fnames):
         if l not in to_save['gallery'].keys():
             to_save['gallery'][l] = []
             to_save['probe'][l] = {}
@@ -171,15 +237,14 @@ def identification_briar(data, dataset, metric='euc'):
 
     probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
                       'OUMVLP': [['00']],
-                      'BTS1': [[seq for seq in set(seq_type) if 'controlled' not in seq]]}
+                      'BRIAR': [[seq for seq in set(seq_type) if 'controlled' not in seq]]}
 
     gallery_seq_dict = {'CASIA-B': [['nm-01', 'nm-02', 'nm-03', 'nm-04']],
                         'OUMVLP': [['01']],
-                        'BTS1': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
+                        'BRIAR': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
 
-    num_rank = 10
     acc = np.zeros([len(probe_seq_dict[dataset]),
-                    view_num, view_num, num_rank]) - 1.
+                    fnames_num, fnames_num, num_rank]) - 1.
 
     probe_sequence_label_mask = np.zeros(len(seq_type), dtype=bool)
     gallery_labels = to_save['gallery'].keys()
@@ -187,25 +252,15 @@ def identification_briar(data, dataset, metric='euc'):
         if probe_label in gallery_labels:
             probe_sequence_label_mask[np.isin(label, probe_label)] = True
 
+    pseq_mask = np.isin(seq_type,
+                        probe_seq_dict[dataset]) & probe_sequence_label_mask
     print("Number of gallery videos: {}".format(np.sum(gallery_mask)))
     print("Number of probe videos:   {}".format(np.sum(probe_mask)))
-    print("Number of probe w/gallery videos: {}".format(np.sum(probe_sequence_label_mask)))
+    print("Number of probe w/gallery videos: {}".format(np.sum(pseq_mask)))
+    print("Number of probe w/gallery videos + gallery: {}".format(np.sum(probe_sequence_label_mask)))
 
     eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
-
-    '''
-    with open(eval_metric_pickle_fname, "wb") as f:
-        pickle.dump(probe_seq_dict[dataset], f)
-        pickle.dump(gallery_seq_dict[dataset], f)
-        pickle.dump(seq_type, f)
-        pickle.dump(acc, f)
-        pickle.dump(gallery_y, f)
-        pickle.dump(label, f)
-        pickle.dump(probe_sequence_label_mask, f)
-        pickle.dump([jj for jj in gallery_labels], f)
-        pickle.dump(feature, f)
-        pickle.dump(to_save, f)
-    '''
+    acc_pickle_fname = "./accuracy_and_seqs.pkl"
 
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
@@ -226,24 +281,67 @@ def identification_briar(data, dataset, metric='euc'):
                                 probe_seq) & probe_sequence_label_mask
 
             probe_x = feature[pseq_mask, :]
+
+            # tuple of probes len num_samples converted to vector
             probe_y = label[pseq_mask]
+            probe_y_vector = np.reshape(probe_y, [-1, 1])
 
-            dist = cuda_dist(probe_x, gallery_x, metric)
-            idx = dist.sort(1)[1].cpu().numpy()
-            acc[p, :, :, :] = np.round(np.sum(np.cumsum(np.reshape(probe_y, [-1, 1]) ==
-                                                        gallery_y[idx[:, 0:num_rank]],
-                                                        1) > 0,
-                                              0) * 100 / dist.shape[0],
-                                       2)
+            # calculate distance between probe features and gallery features
+            dist = cuda_dist(probe_x, gallery_x, 'cos')
+            sorted_match_indices = dist.sort(1)[1].cpu().numpy()
 
+            # sort the gallery based on the sorted match scores up to max rank
+            gallery_match_score_sorted = gallery_y[sorted_match_indices[:, 0:num_rank]]
+
+            # then, identify locations where the correct match appears
+            # (num_probes x num_rank)
+            correct_match_locations = (probe_y_vector ==
+                                       gallery_y[sorted_match_indices[:, 0:num_rank]])
+
+            # find the cumulative sum along the rows (add columns). Once
+            # greater than zero correct match has been found, still
+            # (num_probes x num_rank)
+            false_in_rows_until_correct_match = np.cumsum(np.reshape(probe_y, [-1, 1]) ==
+                                                          gallery_y[sorted_match_indices[:, 0:num_rank]],
+                                                          1) > 0
+
+            probe_x_failure_rank_indices = get_failure_rank_indices(false_in_rows_until_correct_match,
+                                                                    failure_ranks)
+            # probe_x_failure_rank_sequences = get_failure_rank_sequencs(probe_x_failure_rank_indices,
+            #                                                           probe_x)
+
+            # save_failure_sequences(probe_x_failure_rank_indices, output_path)
+
+            # then sum this along the columns to see how many 1's in rank-1 column,
+            # rank-5 column, etc.
+            num_matches_in_given_column = np.sum(false_in_rows_until_correct_match, 0)
+
+            # percentage rank-1 through rank-num_rank
+            num_probes = dist.shape[0]
+            rank_percentages = np.round(num_matches_in_given_column * 100 / num_probes, 2)
+
+            acc[p, :, :, :] = rank_percentages
+
+    with open(acc_pickle_fname, "wb") as f:
+        pickle.dump(false_in_rows_until_correct_match, f)
+        pickle.dump(acc, f)
+        pickle.dump(probe_seq_dict[dataset], f)
+        pickle.dump(gallery_seq_dict[dataset], f)
+        pickle.dump(seq_type, f)
+        pickle.dump(gallery_y, f)
+        pickle.dump(label, f)
+        pickle.dump(probe_sequence_label_mask, f)
+        pickle.dump([jj for jj in gallery_labels], f)
+        pickle.dump(to_save, f)
+        pickle.dump(fnames, f)
 
     result_dict = {}
     np.set_printoptions(precision=3, suppress=True)
-    for ii in [0, 4, 9]:
+    for ii in ranks:
         msg_mgr.log_info(f'===Rank-{ii+1}===')
         msg_mgr.log_info('%.3f ' % (np.mean(acc[0, :, :, ii])))
     result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
-    return result_dict
+    return result_dict, probe_x_failure_rank_indices
 
 
 def identification_real_scene(data, dataset, metric='euc'):
