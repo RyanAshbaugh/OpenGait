@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import argparse
 import torch
 import torch.nn as nn
@@ -52,6 +53,15 @@ def initialization(cfgs, training):
     init_seeds(seed)
 
     return msg_mgr
+
+
+def save_failure_sequences(probe_x_fail_indices, loader):
+    for ii, inputs in enumerate(loader):
+        inputs_list, labels, _, _, seq_length = inputs
+        silhouettes = inputs[0]
+
+        if np.isin(probe_x_fail_indices, ii):
+            print(silhouettes.shape)
 
 
 def run_model(cfgs, loader, msg_mgr, training):
@@ -155,7 +165,15 @@ def run_test(model, msg_mgr, loader):
             dataset_name = model.cfgs['data_cfg']['test_dataset_name']
         except BaseException:
             dataset_name = model.cfgs['data_cfg']['dataset_name']
-        return eval_func(info_dict, dataset_name, **valid_args)
+
+        eval_output, probe_x_fail_indices = eval_func(info_dict,
+                                                      dataset_name,
+                                                      **valid_args)
+
+        if model.cfgs['evaluator_cfg']['failure_analysis']['save_failure_sequences']:
+            save_failure_sequences(probe_x_fail_indices, loader)
+
+        return eval_output
 
 
 if __name__ == '__main__':
