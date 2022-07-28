@@ -16,6 +16,8 @@ import data.sampler as Samplers
 from data.collate_fn import CollateFn
 from modeling.base_model import BaseModel
 
+import cv2
+
 parser = argparse.ArgumentParser(description='Main program for opengait.')
 parser.add_argument('--local_rank', type=int, default=0,
                     help="passed by torch.distributed.launch module")
@@ -56,12 +58,31 @@ def initialization(cfgs, training):
 
 
 def save_failure_sequences(probe_x_fail_indices, loader):
-    for ii, inputs in enumerate(loader):
-        inputs_list, labels, _, _, seq_length = inputs
-        silhouettes = inputs[0]
+    out_folder = './failures'
+    print("probe_x_fail_indices: ", probe_x_fail_indices)
 
-        if np.isin(probe_x_fail_indices, ii):
+    if not os.path.exists(out_folder):
+        os.mkdir(out_folder)
+    for ii, inputs in enumerate(loader):
+        inputs_list, labels, _, fnames, seq_length = inputs
+        silhouettes = inputs_list[0]
+
+        if np.isin(probe_x_fail_indices, ii).sum() > 0:
+            print("match: {}".format(ii))
+            fail_sequence_folder = os.path.join(out_folder,
+                                                '{}_{}_seq-index_{}'
+                                                .format(labels[ii],
+                                                        fnames[ii],
+                                                        ii))
+            if not os.path.exists(fail_sequence_folder):
+                os.mkdir(fail_sequence_folder)
+
             print(silhouettes.shape)
+            for jj in range(silhouettes.shape[0]):
+                print('should be writing')
+                cv2.imwrite(os.path.join(fail_sequence_folder,
+                                         '{:04}.png'.format(jj)),
+                            silhouettes[jj, 3, :, :])
 
 
 def run_model(cfgs, loader, msg_mgr, training):
@@ -171,6 +192,7 @@ def run_test(model, msg_mgr, loader):
                                                       **valid_args)
 
         if model.cfgs['evaluator_cfg']['failure_analysis']['save_failure_sequences']:
+            print('save_failure_sequences')
             save_failure_sequences(probe_x_fail_indices, loader)
 
         return eval_output
