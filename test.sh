@@ -1,6 +1,6 @@
 # # **************** For CASIA-B ****************
 # # Baseline
-CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 opengait/main.py --cfgs ./config/baseline/baseline_BRIAR_test.yaml --phase test
+CUDA_VISIBLE_DEVICES=2,3 python -m torch.distributed.launch --nproc_per_node=2 opengait/main.py --cfgs ./config/baseline/baseline_BRIAR.yaml --phase test
 
 # # GaitSet
 # CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 opengait/main.py --cfgs ./config/gaitset/gaitset.yaml --phase test
