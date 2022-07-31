@@ -186,7 +186,7 @@ def identification_briar(data, dataset, metric='euc'):
                                         data['types'],
                                         data['views'])
 
-    ranks = [0, 2, 4, 9, 14]
+    ranks = [0, 2, 4, 9, 10]
     failure_ranks = [1, 5, 10]
     num_rank = int(np.max(np.array(ranks)) + 1)
     label = np.array(label)
@@ -249,7 +249,7 @@ def identification_briar(data, dataset, metric='euc'):
     print("Number of probe w/gallery videos: {}".format(np.sum(pseq_mask)))
     print("Number of probe w/gallery videos + gallery: {}".format(np.sum(probe_sequence_label_mask)))
 
-    eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
+    # eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
     acc_pickle_fname = "./accuracy_and_seqs.pkl"
 
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
@@ -312,7 +312,6 @@ def identification_briar(data, dataset, metric='euc'):
 
             acc[p, :, :, :] = rank_percentages
 
-    '''
     with open(acc_pickle_fname, "wb") as f:
         pickle.dump(false_in_rows_until_correct_match, f)
         pickle.dump(acc, f)
@@ -325,7 +324,6 @@ def identification_briar(data, dataset, metric='euc'):
         pickle.dump([jj for jj in gallery_labels], f)
         pickle.dump(to_save, f)
         pickle.dump(fnames, f)
-    '''
 
     result_dict = {}
     np.set_printoptions(precision=3, suppress=True)
@@ -333,7 +331,7 @@ def identification_briar(data, dataset, metric='euc'):
         msg_mgr.log_info(f'===Rank-{ii+1}===')
         msg_mgr.log_info('%.3f ' % (np.mean(acc[0, :, :, ii])))
     result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
-    return result_dict, probe_x_failure_rank_indices
+    return result_dict, pseq_mask, probe_x_failure_rank_indices
 
 
 def identification_real_scene(data, dataset, metric='euc'):
