@@ -11,7 +11,8 @@ from utils import (
     get_attr_from, get_valid_args,
 )
 from utils import evaluation as eval_functions
-from data.dataset_briar import DataSetBRIAR
+# from data.dataset_briar import DataSetBRIAR
+from data.dataset import DataSet
 import data.sampler as Samplers
 from data.collate_fn import CollateFn
 from modeling.base_model import BaseModel
@@ -57,32 +58,39 @@ def initialization(cfgs, training):
     return msg_mgr
 
 
-def save_failure_sequences(probe_x_fail_indices, loader):
+def save_failure_sequences(pseq_mask, probe_x_fail_indices, loader):
     out_folder = './failures'
     print("probe_x_fail_indices: ", probe_x_fail_indices)
+
+    # indices are with respect to probes alone, so much adjust them to be with
+    # respect to all sequences
+    for rank, rank_fail_indices in probe_x_fail_indices.items():
+        adjusted_indices = np.where(pseq_mask)[0][rank_fail_indices]
+        probe_x_fail_indices[rank] = rank_fail_indices
 
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
     for ii, inputs in enumerate(loader):
         inputs_list, labels, _, fnames, seq_length = inputs
-        silhouettes = inputs_list[0]
+        print("fnames: ", fnames)
+        silhouettes = inputs_list[0][0]
 
-        if np.isin(probe_x_fail_indices, ii).sum() > 0:
-            print("match: {}".format(ii))
-            fail_sequence_folder = os.path.join(out_folder,
-                                                '{}_{}_seq-index_{}'
-                                                .format(labels[ii],
-                                                        fnames[ii],
-                                                        ii))
-            if not os.path.exists(fail_sequence_folder):
-                os.mkdir(fail_sequence_folder)
+        for rank, rank_fail_indices in probe_x_fail_indices.items():
+            if np.isin(rank_fail_indices, ii).sum() > 0:
+                print("match: {}".format(ii))
+                fail_sequence_folder = os.path.join(out_folder,
+                                                    '{}_{}_seq-index_{}'
+                                                    .format(rank,
+                                                            fnames[0],
+                                                            ii))
+                if not os.path.exists(fail_sequence_folder):
+                    os.mkdir(fail_sequence_folder)
 
-            print(silhouettes.shape)
-            for jj in range(silhouettes.shape[0]):
-                print('should be writing')
-                cv2.imwrite(os.path.join(fail_sequence_folder,
-                                         '{:04}.png'.format(jj)),
-                            silhouettes[jj, 3, :, :])
+                for jj in range(silhouettes.shape[0]):
+                    out_image = np.moveaxis(silhouettes[jj, :, :, :], 0, -1)
+                    cv2.imwrite(os.path.join(fail_sequence_folder,
+                                            '{:04}.png'.format(jj)),
+                                out_image)
 
 
 def run_model(cfgs, loader, msg_mgr, training):
@@ -108,7 +116,8 @@ def setup_loader(cfgs, msg_mgr, train=True):
 
     sampler_cfg = (cfgs['trainer_cfg']['sampler'] if
                    train else cfgs['evaluator_cfg']['sampler'])
-    dataset = DataSetBRIAR(cfgs, train)
+    # dataset = DataSetBRIAR(cfgs, train)
+    dataset = DataSet(cfgs['data_cfg'], msg_mgr, train)
 
     Sampler = get_attr_from([Samplers], sampler_cfg['type'])
     vaild_args = get_valid_args(Sampler,
@@ -187,13 +196,13 @@ def run_test(model, msg_mgr, loader):
         except BaseException:
             dataset_name = model.cfgs['data_cfg']['dataset_name']
 
-        eval_output, probe_x_fail_indices = eval_func(info_dict,
-                                                      dataset_name,
-                                                      **valid_args)
+        eval_output, pseq_mask, probe_x_fail_indices = eval_func(info_dict,
+                                                                 dataset_name,
+                                                                 **valid_args)
 
         if model.cfgs['evaluator_cfg']['failure_analysis']['save_failure_sequences']:
             print('save_failure_sequences')
-            save_failure_sequences(probe_x_fail_indices, loader)
+            save_failure_sequences(pseq_mask, probe_x_fail_indices, loader)
 
         return eval_output
 
