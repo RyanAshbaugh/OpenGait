@@ -16,16 +16,14 @@ evaluator_cfg:
     batch_shuffle: false
     batch_size: 2
     sample_type: all_ordered # all indicates whole sequence used to test, while ordered means input sequence by its natural order; Other options:   fixed_unordered
-    random_sample_full_video: false
-    frames_num_fixed: 500
-    frames_all_limit: 10000 # limit the number of sampled frames to prevent out of memory
+    random_sample_full_video: true
     use_full_video: false
-  metric: cos # euc
+  metric: euc # cos
   transform:
     - type: BaseRgbTransform
       img_w: 64
   failure_analysis:
-    save_failure_sequences: true
+    save_failure_sequences: false
     max_fail_save_sequences: 100
     
 
