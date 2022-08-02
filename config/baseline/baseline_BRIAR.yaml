@@ -16,7 +16,8 @@ evaluator_cfg:
     batch_shuffle: false
     batch_size: 2
     sample_type: all_ordered # all indicates whole sequence used to test, while ordered means input sequence by its natural order; Other options:   fixed_unordered
-    random_sample_full_video: true
+    frames_num_fixed: 500 # fixed frames number for training
+    random_sample_full_video: false
     use_full_video: false
   metric: euc # cos
   transform:
