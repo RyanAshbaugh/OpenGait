@@ -155,10 +155,12 @@ class BaseModel(MetaModel, nn.Module):
     def get_backbone(self, backbone_cfg):
         """Get the backbone of the model."""
         if is_dict(backbone_cfg):
+            print('is dict')
             Backbone = get_attr_from([backbones], backbone_cfg['type'])
             valid_args = get_valid_args(Backbone, backbone_cfg, ['type'])
             return Backbone(**valid_args)
         if is_list(backbone_cfg):
+            print('is list')
             Backbone = nn.ModuleList([self.get_backbone(cfg)
                                       for cfg in backbone_cfg])
             return Backbone
