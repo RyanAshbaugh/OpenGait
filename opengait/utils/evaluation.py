@@ -34,7 +34,7 @@ def findCorrectMatches(probe_in_top_N):
 def isCorrectMatchWithinRankN(correct_matches, rank):
     # be sure to pass only mated probes, since if a row that is all false will
     # have argmax return 0
-    probe_match_within_rank_N = correct_matches.argmax(axis=1) < rank
+    probe_match_within_rank_N = correct_matches.argmax(axis=1) == rank
     return probe_match_within_rank_N
 
 
@@ -58,11 +58,18 @@ def findProbesWithAFalsePositive(ranked_distances, rank, threshold):
 def get_failure_rank_indices(false_in_rows_until_correct_match, failure_ranks):
     probe_x_failure_rank_indices = {}
     correct_matches = findCorrectMatches(false_in_rows_until_correct_match)
+
+    print('false_in shape: ', false_in_rows_until_correct_match.shape)
+    print('correct_matches: ', correct_matches)
+    print('correct_matches[:, 0].sum(): ', correct_matches[:, 0].sum())
+
     for ii in failure_ranks:
         lower_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
                                                         ii - 1)
+        print('lower: ', lower_rank_sequencs)
         upper_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
                                                         ii)
+        print('upper: ', upper_rank_sequencs)
         failure_sequence_indices = list(set(np.where((lower_rank_sequencs == False) &
                                                      (upper_rank_sequencs == True))[0]))
         probe_x_failure_rank_indices[ii] = np.asarray(failure_sequence_indices)
@@ -264,8 +271,8 @@ def identification_briar(data, dataset, metric='euc'):
     print("Number of probe w/gallery videos + gallery: {}".format(np.sum(probe_sequence_label_mask)))
 
     # eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
-    acc_pickle_fname = "./accuracy_and_seqs_all_ordered_s2s.pkl"
-    failure_output_path = "./failures_all_ordered.csv"
+    acc_pickle_fname = "./accuracy_and_seqs_all_ordered_sequence_2_subj.pkl"
+    failure_output_path = "./failures_all_ordered_3.csv"
 
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
@@ -314,9 +321,9 @@ def identification_briar(data, dataset, metric='euc'):
             # greater than zero correct match has been found, still
             # (num_probes x num_rank)
             false_in_rows_until_correct_match = np.cumsum(np.reshape(probe_y, [-1, 1]) ==
-                                                          pred_by_subj,
+                                                          gallery_y[sorted_match_indices[:, 0:num_rank]],
                                                           1) > 0
-            # seq2seq                                              gallery_y[sorted_match_indices[:, 0:num_rank]],
+            # seq2seq                                              pred_by_subj,
             # seq2seq                                              1) > 0
 
             probe_x_failure_rank_indices = get_failure_rank_indices(false_in_rows_until_correct_match,
@@ -325,6 +332,8 @@ def identification_briar(data, dataset, metric='euc'):
             #                                                           probe_x)
 
             # save_failure_sequences(probe_x_failure_rank_indices, output_path)
+            print('probe_x_failure_rank_indices: ', probe_x_failure_rank_indices)
+            print(false_in_rows_until_correct_match[:, :2])
             probe_x_fnames = np.asarray(fnames)[pseq_mask]
             save_failure_csv(probe_x_fnames,
                              probe_x_failure_rank_indices,
