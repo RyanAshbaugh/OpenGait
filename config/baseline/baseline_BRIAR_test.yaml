@@ -1,7 +1,7 @@
 data_cfg:
   dataset_name: BRIAR
-  dataset_root: /research/iprobe-ashbau12/datasets/opengait-briar/BRIAR
-  dataset_partition: /research/iprobe-ashbau12/datasets/opengait-briar/BRIAR/opengait-briar_partition.json
+  dataset_root: /research/iprobe-ashbau12/datasets/opengait-briar/BRIAR-detections
+  dataset_partition: /research/iprobe-ashbau12/datasets/opengait-briar/BRIAR-detections/opengait-briar_partition.json
   num_workers: 2
   remove_no_gallery: false # Remove probe if no gallery for it
   test_dataset_name: BRIAR
@@ -9,7 +9,7 @@ data_cfg:
 evaluator_cfg:
   enable_float16: true
   restore_ckpt_strict: true
-  restore_hint: 6000
+  restore_hint: 45000
   save_name: Baseline
   eval_func: identification_briar
   sampler:

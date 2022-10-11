@@ -20,7 +20,7 @@ class HorizontalPoolingPyramid():
     def __call__(self, x):
         """
             x  : [n, c, h, w]
-            ret: [n, c, p] 
+            ret: [n, c, p]
         """
         n, c = x.size()[:2]
         features = []

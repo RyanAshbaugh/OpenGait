@@ -162,6 +162,7 @@ class BaseModel(MetaModel, nn.Module):
             print(valid_args)
             return Backbone(**valid_args)
         if is_list(backbone_cfg):
+            print('is list')
             Backbone = nn.ModuleList([self.get_backbone(cfg)
                                       for cfg in backbone_cfg])
             return Backbone

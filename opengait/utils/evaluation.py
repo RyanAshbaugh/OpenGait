@@ -1,5 +1,6 @@
 import sys
 import os
+import csv
 from time import strftime, localtime
 import torch
 import numpy as np
@@ -34,7 +35,7 @@ def findCorrectMatches(probe_in_top_N):
 def isCorrectMatchWithinRankN(correct_matches, rank):
     # be sure to pass only mated probes, since if a row that is all false will
     # have argmax return 0
-    probe_match_within_rank_N = correct_matches.argmax(axis=1) < rank
+    probe_match_within_rank_N = correct_matches.argmax(axis=1) == rank
     return probe_match_within_rank_N
 
 
@@ -58,15 +59,33 @@ def findProbesWithAFalsePositive(ranked_distances, rank, threshold):
 def get_failure_rank_indices(false_in_rows_until_correct_match, failure_ranks):
     probe_x_failure_rank_indices = {}
     correct_matches = findCorrectMatches(false_in_rows_until_correct_match)
+
+    print('false_in shape: ', false_in_rows_until_correct_match.shape)
+    print('correct_matches: ', correct_matches)
+    print('correct_matches[:, 0].sum(): ', correct_matches[:, 0].sum())
+
     for ii in failure_ranks:
         lower_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
                                                         ii - 1)
+        print('lower: ', lower_rank_sequencs)
         upper_rank_sequencs = isCorrectMatchWithinRankN(correct_matches,
                                                         ii)
+        print('upper: ', upper_rank_sequencs)
         failure_sequence_indices = list(set(np.where((lower_rank_sequencs == False) &
                                                      (upper_rank_sequencs == True))[0]))
         probe_x_failure_rank_indices[ii] = np.asarray(failure_sequence_indices)
     return probe_x_failure_rank_indices
+
+
+def save_failure_csv(probe_x_fnames, probe_x_failure_rank_indices, output_path):
+
+    with open(output_path, 'w') as csvfile:
+        header = ['Rank', 'filename']
+        writer = csv.DictWriter(csvfile, fieldnames=header)
+        for rank, rank_fail_indices in probe_x_failure_rank_indices.items():
+            for ii, indice in enumerate(rank_fail_indices):
+                writer.writerow({'Rank': rank,
+                                 'filename': probe_x_fnames[indice]})
 
 
 def cuda_dist(x, y, metric='euc'):
@@ -190,7 +209,7 @@ def identification_briar(data, dataset, metric='euc'):
     print('feature shape: ', feature.shape)
     sys.exit()
 
-    ranks = [0, 2, 4, 9, 14]
+    ranks = [0, 2, 4, 9, 10]
     failure_ranks = [1, 5, 10]
     num_rank = int(np.max(np.array(ranks)) + 1)
     label = np.array(label)
@@ -226,8 +245,10 @@ def identification_briar(data, dataset, metric='euc'):
     label_collapsed = np.array(label_collapsed)
     gallery_collapsed = np.stack(gallery_collapsed)
 
+    '''
     gallery_x = gallery_collapsed
     gallery_y = label_collapsed
+    '''
 
     probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
                       'OUMVLP': [['00']],
@@ -253,8 +274,9 @@ def identification_briar(data, dataset, metric='euc'):
     print("Number of probe w/gallery videos: {}".format(np.sum(pseq_mask)))
     print("Number of probe w/gallery videos + gallery: {}".format(np.sum(probe_sequence_label_mask)))
 
-    eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
-    acc_pickle_fname = "./accuracy_and_seqs.pkl"
+    # eval_metric_pickle_fname = "./all_probe_test_metrics_probe_with_gallery_all_frames.pkl"
+    acc_pickle_fname = "./accuracy_and_seqs_all_ordered_sequence_2_subj.pkl"
+    failure_output_path = "./failures_all_ordered_3.csv"
 
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
@@ -262,10 +284,9 @@ def identification_briar(data, dataset, metric='euc'):
             #     for (v2, gallery_view) in enumerate(view_list):
             gseq_mask = np.isin(seq_type, gallery_seq) # & np.isin(
             #     view, [gallery_view])
-            '''
+
             gallery_x = feature[gseq_mask, :]
             gallery_y = label[gseq_mask]
-            '''
 
             # open set
             # pseq_mask = np.isin(seq_type, probe_seq)
@@ -281,8 +302,16 @@ def identification_briar(data, dataset, metric='euc'):
             probe_y_vector = np.reshape(probe_y, [-1, 1])
 
             # calculate distance between probe features and gallery features
-            dist = cuda_dist(probe_x, gallery_x, 'cos')
+            dist = cuda_dist(probe_x, gallery_x, metric)
             sorted_match_indices = dist.sort(1)[1].cpu().numpy()
+
+            # seq to sequenc matching
+            pred_by_seq = gallery_y[sorted_match_indices]  # [num_probe, num_gallery]
+            pred_by_subj = pred_by_seq[:, :len(to_save['gallery'])]  # just to get the shape and dtype right
+            for i in range(pred_by_seq.shape[0]):
+                pred_by_subj[i] = pred_by_seq[i][np.sort(np.unique(pred_by_seq[i], return_index=True)[1])]
+            pred_by_subj = pred_by_subj[:, :num_rank]
+
 
             # sort the gallery based on the sorted match scores up to max rank
             gallery_match_score_sorted = gallery_y[sorted_match_indices[:, 0:num_rank]]
@@ -298,6 +327,8 @@ def identification_briar(data, dataset, metric='euc'):
             false_in_rows_until_correct_match = np.cumsum(np.reshape(probe_y, [-1, 1]) ==
                                                           gallery_y[sorted_match_indices[:, 0:num_rank]],
                                                           1) > 0
+            # seq2seq                                              pred_by_subj,
+            # seq2seq                                              1) > 0
 
             probe_x_failure_rank_indices = get_failure_rank_indices(false_in_rows_until_correct_match,
                                                                     failure_ranks)
@@ -305,6 +336,12 @@ def identification_briar(data, dataset, metric='euc'):
             #                                                           probe_x)
 
             # save_failure_sequences(probe_x_failure_rank_indices, output_path)
+            print('probe_x_failure_rank_indices: ', probe_x_failure_rank_indices)
+            print(false_in_rows_until_correct_match[:, :2])
+            probe_x_fnames = np.asarray(fnames)[pseq_mask]
+            save_failure_csv(probe_x_fnames,
+                             probe_x_failure_rank_indices,
+                             failure_output_path)
 
             # then sum this along the columns to see how many 1's in rank-1 column,
             # rank-5 column, etc.
@@ -316,7 +353,6 @@ def identification_briar(data, dataset, metric='euc'):
 
             acc[p, :, :, :] = rank_percentages
 
-    '''
     with open(acc_pickle_fname, "wb") as f:
         pickle.dump(false_in_rows_until_correct_match, f)
         pickle.dump(acc, f)
@@ -329,7 +365,6 @@ def identification_briar(data, dataset, metric='euc'):
         pickle.dump([jj for jj in gallery_labels], f)
         pickle.dump(to_save, f)
         pickle.dump(fnames, f)
-    '''
 
     result_dict = {}
     np.set_printoptions(precision=3, suppress=True)
@@ -337,7 +372,7 @@ def identification_briar(data, dataset, metric='euc'):
         msg_mgr.log_info(f'===Rank-{ii+1}===')
         msg_mgr.log_info('%.3f ' % (np.mean(acc[0, :, :, ii])))
     result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
-    return result_dict, probe_x_failure_rank_indices
+    return result_dict, pseq_mask, probe_x_failure_rank_indices
 
 
 def identification_real_scene(data, dataset, metric='euc'):
