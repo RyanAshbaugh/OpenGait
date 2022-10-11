@@ -1,3 +1,4 @@
+import sys
 import os
 from time import strftime, localtime
 import torch
@@ -185,6 +186,9 @@ def identification_briar(data, dataset, metric='euc'):
                                         data['labels'],
                                         data['types'],
                                         data['views'])
+    print('feature type: ', type(feature))
+    print('feature shape: ', feature.shape)
+    sys.exit()
 
     ranks = [0, 2, 4, 9, 14]
     failure_ranks = [1, 5, 10]
@@ -493,3 +497,248 @@ def re_ranking(original_dist, query_num, k1, k2, lambda_value):
     del jaccard_dist
     final_dist = final_dist[:query_num, query_num:]
     return final_dist
+
+
+def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=True,
+						 use_subjects_as_galleries=False):
+    feature, label, seq_type, view = (data['embeddings'],
+                                      data['labels'],
+                                      data['types'],
+                                      data['views'])
+    label = np.array(label)
+
+    if save_embeddings:
+        import pickle
+        pickle.dump({'embeddings': feature, 'labels': label, 'types': seq_type, 'views': view},
+                    open('embeddings.pkl', 'wb'))
+
+    probe_mask = np.array([False if 'controlled' in seq else True for seq in seq_type])
+
+    to_save = {'gallery': {}, 'probe': {}}
+    for f, l, s, v in zip(list(feature), label, seq_type, view):
+        if l not in to_save['gallery'].keys():
+            to_save['gallery'][l] = []
+            to_save['probe'][l] = {}
+        if s.startswith('controlled'):
+            to_save['gallery'][l].append(f)
+        else:
+            to_save['probe'][l][f'{s}_{v}'] = f
+
+    def remove_no_gallery(gallery):
+        return {k: v for k, v in gallery.items() if v}
+
+    def remove_no_gallery_from_probe(gallery_subjects, probe):
+        return {k: v for k, v in probe.items() if k in gallery_subjects}
+
+    to_save['gallery'] = remove_no_gallery(to_save['gallery'])
+    to_save['probe'] = remove_no_gallery_from_probe(to_save['gallery'].keys(),
+                                                    to_save['probe'])
+
+    if use_subjects_as_galleries:
+        gallery_collapsed = []
+        label_collapsed = []
+        for l, g in to_save['gallery'].items():
+            label_collapsed.append(l)
+            gallery_collapsed.append(np.stack(g).mean(0))
+        gallery_y = np.array(label_collapsed)
+        gallery_x = np.stack(gallery_collapsed)
+
+    print(f'Gallery Subjects: {sum([1 for l in to_save["gallery"].values() if len(l) > 0])}')
+    print(f'Probe Subjects: {sum([1 for d in to_save["probe"].values() if len(d) > 0])}')
+
+    probe_seq_dict = {'BTS1': [[seq for seq in set(seq_type) if 'controlled' not in seq],
+                               [seq for seq in set(seq_type) if 'close_range' in seq],
+                               [seq for seq in set(seq_type) if '100m' in seq],
+                               [seq for seq in set(seq_type) if '200m' in seq],
+                               [seq for seq in set(seq_type) if '270m' in seq],
+                               [seq for seq in set(seq_type) if '300m' in seq],
+                               [seq for seq in set(seq_type) if '370m' in seq],
+                               [seq for seq in set(seq_type) if '400m' in seq],
+                               [seq for seq in set(seq_type) if '490m' in seq],
+                               [seq for seq in set(seq_type) if '500m' in seq],
+                               [seq for seq in set(seq_type) if '600m' in seq],
+                               [seq for seq in set(seq_type) if '800m' in seq],
+                               [seq for seq in set(seq_type) if '1000m' in seq],
+                               [seq for seq in set(seq_type) if 'uav' in seq],
+                               [seq for seq in set(seq_type) if 'face' in seq],
+                               [seq for seq in set(seq_type) if 'wb' in seq],
+                               [seq for seq in set(seq_type) if 'rand' in seq],
+                               [seq for seq in set(seq_type) if 'struct' in seq],
+                               [seq for seq in set(seq_type) if 'stand' in seq]]}
+
+    gallery_seq_dict = {'BTS1': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
+
+    num_rank = 10
+    acc = np.zeros([len(probe_seq_dict[dataset]), 1, 1, num_rank]) - 1.
+
+    probe_sequence_label_mask = np.zeros(len(seq_type), dtype=bool)
+    gallery_labels = to_save['gallery'].keys()
+    for probe_label in to_save['probe'].keys():
+        if probe_label in gallery_labels:
+            probe_sequence_label_mask[np.isin(label, probe_label)] = True
+    print(f'probe sequences: {np.sum(probe_sequence_label_mask)}/{probe_sequence_label_mask.shape[0]}')
+
+    for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
+        for gallery_seq in gallery_seq_dict[dataset]:
+            gseq_mask = np.isin(seq_type, gallery_seq)
+            if not use_subjects_as_galleries:
+                gallery_x = feature[gseq_mask, :]
+                gallery_y = label[gseq_mask]
+
+            pseq_mask = np.isin(seq_type, probe_seq) & probe_sequence_label_mask & probe_mask
+            probe_x = feature[pseq_mask, :]
+            probe_y = label[pseq_mask]
+
+            dist = cuda_dist(probe_x, gallery_x, metric)
+            idx = dist.sort(1)[1].cpu().numpy()
+            pred_by_seq = gallery_y[idx]  # [num_probe, num_gallery]
+            pred_by_subj = pred_by_seq[:, :len(to_save['gallery'])]  # just to get the shape and dtype right
+            for i in range(pred_by_seq.shape[0]):
+                pred_by_subj[i] = pred_by_seq[i][np.sort(np.unique(pred_by_seq[i], return_index=True)[1])]
+
+            pred_by_subj = pred_by_subj[:, :num_rank]
+            acc[p, :, :, :] = np.sum(np.cumsum(np.reshape(probe_y, [-1, 1]) == pred_by_subj, 1) > 0, 0) * 100 / dist.shape[0]
+    result_dict = {}
+    with np.printoptions(precision=2, suppress=True):
+        for i in [0, 2, 4, 9]:
+            print(f'===Rank-{i + 1}===')
+            print(f'All: {np.mean(acc[0, :, :, i]):.2f},\t'
+                  f'CR: {np.mean(acc[1, :, :, i]):.2f}\t'
+                  f'100: {np.mean(acc[2, :, :, i]):.2f}\t'
+                  f'200: {np.mean(acc[3, :, :, i]):.2f}\t'
+                  f'270: {np.mean(acc[4, :, :, i]):.2f}\t'
+                  f'300: {np.mean(acc[5, :, :, i]):.2f}\t'
+                  f'370: {np.mean(acc[6, :, :, i]):.2f}\t'
+                  f'400: {np.mean(acc[7, :, :, i]):.2f},\n'
+                  f'490: {np.mean(acc[8, :, :, i]):.2f}\t'
+                  f'500: {np.mean(acc[9, :, :, i]):.2f}\t'
+                  f'600: {np.mean(acc[10, :, :, i]):.2f}\t'
+                  f'800: {np.mean(acc[11, :, :, i]):.2f}\t'
+                  f'1000: {np.mean(acc[12, :, :, i]):.2f}\t'
+                  f'uav: {np.mean(acc[13, :, :, i]):.2f}\t'
+                  f'face: {np.mean(acc[14, :, :, i]):.2f}\t'
+                  f'wb: {np.mean(acc[15, :, :, i]):.2f}\n'
+                  f'rand: {np.mean(acc[16, :, :, i]):.2f}\t'
+                  f'struct: {np.mean(acc[17, :, :, i]):.2f}\t'
+                  f'stand: {np.mean(acc[18, :, :, i]):.2f}\t')
+    print(f'All: {[round(x, 2) for x in acc[0, 0, 0]]}\n'
+          f'CR : {[round(x, 2) for x in acc[1, 0, 0]]}\n'
+          f'100: {[round(x, 2) for x in acc[2, 0, 0]]}\n'
+          f'200: {[round(x, 2) for x in acc[3, 0, 0]]}\n'
+          f'270: {[round(x, 2) for x in acc[4, 0, 0]]}\n'
+          f'300: {[round(x, 2) for x in acc[5, 0, 0]]}\n'
+          f'370: {[round(x, 2) for x in acc[6, 0, 0]]}\n'
+          f'400: {[round(x, 2) for x in acc[7, 0, 0]]}\n'
+          f'490: {[round(x, 2) for x in acc[8, 0, 0]]}\n'
+          f'500: {[round(x, 2) for x in acc[9, 0, 0]]}\n'
+          f'600: {[round(x, 2) for x in acc[10, 0, 0]]}\n'
+          f'800: {[round(x, 2) for x in acc[11, 0, 0]]}\n'
+          f'1km: {[round(x, 2) for x in acc[12, 0, 0]]}\n'
+          f'uav: {[round(x, 2) for x in acc[13, 0, 0]]}\n'
+          f'fac: {[round(x, 2) for x in acc[14, 0, 0]]}\n'
+          f'wb : {[round(x, 2) for x in acc[15, 0, 0]]}\n'
+          f'rdn: {[round(x, 2) for x in acc[16, 0, 0]]}\n'
+          f'str: {[round(x, 2) for x in acc[17, 0, 0]]}\n'
+          f'std: {[round(x, 2) for x in acc[18, 0, 0]]}\n'
+    )
+    result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
+    return result_dict
+
+
+def identification_briar_view_yiyang(data, dataset, metric='euc',
+									 save_embeddings=True,
+									 use_subjects_as_galleries=False):
+    feature, label, seq_type, view = (data['embeddings'],
+                                      data['labels'],
+                                      data['types'],
+                                      data['views'])
+    label = np.array(label)
+
+    if save_embeddings:
+        import pickle
+        pickle.dump({'embeddings': feature, 'labels': label, 'types': seq_type, 'views': view},
+                    open('embeddings.pkl', 'wb'))
+
+    probe_mask = np.array([False if 'controlled' in seq else True for seq in seq_type])
+
+    to_save = {'gallery': {}, 'probe': {}}
+    for f, l, s, v in zip(list(feature), label, seq_type, view):
+        if l not in to_save['gallery'].keys():
+            to_save['gallery'][l] = []
+            to_save['probe'][l] = {}
+        if s.startswith('controlled'):
+            to_save['gallery'][l].append(f)
+        else:
+            to_save['probe'][l][f'{s}_{v}'] = f
+
+    def remove_no_gallery(gallery):
+        return {k: v for k, v in gallery.items() if v}
+
+    def remove_no_gallery_from_probe(gallery_subjects, probe):
+        return {k: v for k, v in probe.items() if k in gallery_subjects}
+
+    to_save['gallery'] = remove_no_gallery(to_save['gallery'])
+    to_save['probe'] = remove_no_gallery_from_probe(to_save['gallery'].keys(),
+                                                    to_save['probe'])
+
+    if use_subjects_as_galleries:
+        gallery_collapsed = []
+        label_collapsed = []
+        for l, g in to_save['gallery'].items():
+            label_collapsed.append(l)
+            gallery_collapsed.append(np.stack(g).mean(0))
+        gallery_y = np.array(label_collapsed)
+        gallery_x = np.stack(gallery_collapsed)
+
+    print(f'Gallery Subjects: {sum([1 for l in to_save["gallery"].values() if len(l) > 0])}')
+    print(f'Probe Subjects: {sum([1 for d in to_save["probe"].values() if len(d) > 0])}')
+
+    views_set = sorted(list(set([v[:3] for v in view])))
+    probe_seq_dict = {'BTS1': [[v for v in set(view) if v.startswith(distinct_view)] for distinct_view in views_set]}
+
+    gallery_seq_dict = {'BTS1': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
+
+    num_rank = 10
+    acc = np.zeros([len(probe_seq_dict[dataset]), 1, 1, num_rank]) - 1.
+
+    probe_sequence_label_mask = np.zeros(len(seq_type), dtype=bool)
+    gallery_labels = to_save['gallery'].keys()
+    for probe_label in to_save['probe'].keys():
+        if probe_label in gallery_labels:
+            probe_sequence_label_mask[np.isin(label, probe_label)] = True
+    print(f'probe sequences: {np.sum(probe_sequence_label_mask)}/{probe_sequence_label_mask.shape[0]}')
+
+    for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
+        for gallery_seq in gallery_seq_dict[dataset]:
+            gseq_mask = np.isin(seq_type, gallery_seq)
+            if not use_subjects_as_galleries:
+                gallery_x = feature[gseq_mask, :]
+                gallery_y = label[gseq_mask]
+
+            pseq_mask = np.isin(view, probe_seq) & probe_sequence_label_mask & probe_mask
+            print(f'{views_set[p]}: {sum(pseq_mask)}')
+            if sum(pseq_mask) <= 0:
+                continue
+            probe_x = feature[pseq_mask, :]
+            probe_y = label[pseq_mask]
+
+            dist = cuda_dist(probe_x, gallery_x, metric)
+            idx = dist.sort(1)[1].cpu().numpy()
+            pred_by_seq = gallery_y[idx]  # [num_probe, num_gallery]
+            pred_by_subj = pred_by_seq[:, :len(to_save['gallery'])]  # just to get the shape and dtype right
+            for i in range(pred_by_seq.shape[0]):
+                pred_by_subj[i] = pred_by_seq[i][np.sort(np.unique(pred_by_seq[i], return_index=True)[1])]
+
+            pred_by_subj = pred_by_subj[:, :num_rank]
+            acc[p, :, :, :] = np.sum(np.cumsum(np.reshape(probe_y, [-1, 1]) == pred_by_subj, 1) > 0, 0) * 100 / dist.shape[0]
+    result_dict = {}
+    with np.printoptions(precision=2, suppress=True):
+        for i in [0, 2, 4, 9]:
+            print(f'===Rank-{i + 1}===')
+            for j in range(len(views_set)):
+                  print(f'{views_set[j]}: {np.mean(acc[j, :, :, i]):.2f},\t')
+    for j in range(len(views_set)):
+        print(f'views_set[j]: {[round(x, 2) for x in acc[j, 0, 0]]}\n')
+
+    result_dict["scalar/test_accuracy/NM"] = acc[0, :, :, 0]
+    return result_dict
