@@ -540,6 +540,7 @@ def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=Tru
                                       data['labels'],
                                       data['types'],
                                       data['views'])
+    print(seq_type)
     label = np.array(label)
 
     if save_embeddings:
@@ -585,6 +586,19 @@ def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=Tru
                                [seq for seq in set(seq_type) if 'close_range' in seq],
                                [seq for seq in set(seq_type) if '100m' in seq],
                                [seq for seq in set(seq_type) if '200m' in seq],
+                               [seq for seq in set(seq_type) if '400m' in seq],
+                               [seq for seq in set(seq_type) if '500m' in seq],
+                               [seq for seq in set(seq_type) if 'uav' in seq],
+                               [seq for seq in set(seq_type) if 'face' in seq],
+                               [seq for seq in set(seq_type) if 'wb' in seq],
+                               [seq for seq in set(seq_type) if 'rand' in seq],
+                               [seq for seq in set(seq_type) if 'struct' in seq],
+                               [seq for seq in set(seq_type) if 'stand' in seq]]}
+    '''
+    probe_seq_dict = {'BTS1': [[seq for seq in set(seq_type) if 'controlled' not in seq],
+                               [seq for seq in set(seq_type) if 'close_range' in seq],
+                               [seq for seq in set(seq_type) if '100m' in seq],
+                               [seq for seq in set(seq_type) if '200m' in seq],
                                [seq for seq in set(seq_type) if '270m' in seq],
                                [seq for seq in set(seq_type) if '300m' in seq],
                                [seq for seq in set(seq_type) if '370m' in seq],
@@ -600,6 +614,7 @@ def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=Tru
                                [seq for seq in set(seq_type) if 'rand' in seq],
                                [seq for seq in set(seq_type) if 'struct' in seq],
                                [seq for seq in set(seq_type) if 'stand' in seq]]}
+    '''
 
     gallery_seq_dict = {'BTS1': [[seq for seq in set(list(seq_type)) if 'controlled' in seq]]}
 
@@ -613,6 +628,7 @@ def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=Tru
             probe_sequence_label_mask[np.isin(label, probe_label)] = True
     print(f'probe sequences: {np.sum(probe_sequence_label_mask)}/{probe_sequence_label_mask.shape[0]}')
 
+    print(probe_seq_dict)
     for (p, probe_seq) in enumerate(probe_seq_dict[dataset]):
         for gallery_seq in gallery_seq_dict[dataset]:
             gseq_mask = np.isin(seq_type, gallery_seq)
@@ -625,6 +641,8 @@ def identification_briar_yiyang(data, dataset, metric='euc', save_embeddings=Tru
             probe_y = label[pseq_mask]
 
             dist = cuda_dist(probe_x, gallery_x, metric)
+            print('probe_seq: ', probe_seq)
+            print('dist.shape: ', dist.shape)
             idx = dist.sort(1)[1].cpu().numpy()
             pred_by_seq = gallery_y[idx]  # [num_probe, num_gallery]
             pred_by_subj = pred_by_seq[:, :len(to_save['gallery'])]  # just to get the shape and dtype right

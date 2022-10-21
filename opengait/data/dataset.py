@@ -106,6 +106,7 @@ class DataSet(tordata.Dataset):
                     for vie in sorted(os.listdir(osp.join(dataset_root, lab, typ))):
                         seq_info = [lab, typ, vie]
                         seq_path = osp.join(dataset_root, *seq_info)
+                        '''
                         seq_dirs = sorted(os.listdir(seq_path))
                         if seq_dirs != []:
                             seq_dirs = [osp.join(seq_path, dir)
@@ -113,10 +114,20 @@ class DataSet(tordata.Dataset):
                             if data_in_use is not None:
                                 seq_dirs = [dir for dir, use_bl in zip(
                                     seq_dirs, data_in_use) if use_bl]
+                        '''
+                        seq_dirs = os.listdir(seq_path)
+                        if data_in_use is None:  # not recommended, could be very messy
+                            seq_dirs = [osp.join(seq_path, dir) for dir in seq_dirs]
+
                             seqs_info_list.append([*seq_info, seq_dirs])
                         else:
-                            msg_mgr.log_debug(
-                                'Find no .pkl file in %s-%s-%s.' % (lab, typ, vie))
+                            if all(dir in seq_dirs for dir in data_in_use):
+                                seq_dirs = [osp.join(seq_path, dir) for dir in data_in_use]
+                                seqs_info_list.append([*seq_info, seq_dirs])
+                            else:
+                                msg_mgr.log_debug(
+                                    'Missing .pkl file in %s-%s-%s.' % (lab, typ, vie))
+
             return seqs_info_list
 
         self.seqs_info = get_seqs_info_list(
